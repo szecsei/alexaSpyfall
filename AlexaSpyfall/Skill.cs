@@ -62,7 +62,7 @@ namespace AlexaSpyfall
                 else if (request is IntentRequest intentRequest)
                 {
                     // Checks whether to handle system messages defined by Amazon.
-                    var systemIntentResponse = await HandleSystemIntentsAsync(intentRequest, locale,locationClient,gameClient,session,log);
+                    var systemIntentResponse = await HandleSystemIntentsAsync(intentRequest, locale, locationClient, gameClient, session, log);
                     if (systemIntentResponse.IsHandled)
                     {
                         response = systemIntentResponse.Response;
@@ -94,8 +94,8 @@ namespace AlexaSpyfall
             return new OkObjectResult(response);
         }
 
-        private static async Task<(bool IsHandled, SkillResponse Response)> HandleSystemIntentsAsync(IntentRequest request, 
-            ILocaleSpeech locale, 
+        private static async Task<(bool IsHandled, SkillResponse Response)> HandleSystemIntentsAsync(IntentRequest request,
+            ILocaleSpeech locale,
             DocumentClient locationClient,
             DocumentClient gameClient,
             Session session,
@@ -128,34 +128,41 @@ namespace AlexaSpyfall
                 case IntentNames.StartGame:
                     {
                         var message = await locale.Get(LanguageKeys.StartGame, null);
-                        await gameClient.CreateDocumentAsync(UriFactory.CreateDocumentCollectionUri("spyfalldb", "games"), new Game { id = session.SessionId, Players = new Dictionary<string, double>(),
-                            QuestionsAsked = new List<string>(), Location = "", Cards = new List<int>() });
+                        await gameClient.CreateDocumentAsync(UriFactory.CreateDocumentCollectionUri("spyfalldb", "games"), new Game
+                        {
+                            id = session.SessionId,
+                            Players = new Dictionary<string, double>(),
+                            QuestionsAsked = new List<string>(),
+                            Location = "",
+                            Cards = new List<int>()
+                        });
                         response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message));
                         break;
                     }
                 case IntentNames.AddPlayer:
                     {
-                        var collectURI =  UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
+                        var collectURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
                         int generated = 0;
                         try
                         {
-                            Game next = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault() ;
-                            next.Players.Add(request.Intent.Slots["player"].Value, 0.0);
+                            Game next = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
+                            next.Players.Add(request.Intent.Slots["player"].Value, 0.3);
                             Random rnd = new Random();
                             do
                             {
-                                generated = rnd.Next(29)+1;
+                                generated = rnd.Next(29) + 1;
                             } while (next.Cards.Contains(generated));
                             next.Cards.Add(generated);
                             await gameClient.UpsertDocumentAsync(collectURI, next);
-                        } catch(Exception e)
+                        }
+                        catch (Exception e)
                         {
                             log.LogError(e.ToString());
                             throw e;
                         }
                         log.LogInformation("Something very distinct");
-                 
-                        var message = "I have assigned you card number "+generated;
+
+                        var message = "I have assigned you card number " + generated;
                         response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message));
                         break;
                     }
@@ -175,20 +182,21 @@ namespace AlexaSpyfall
                             int spy = r.Next(game.Cards.Count);
                             log.LogInformation("spy " + spy);
                             StringBuilder strbuilder = new StringBuilder("For every player, I will read out your card number and the symbol you should look for: ");
-                            for(int i =0; i< game.Cards.Count; i++)
+                            for (int i = 0; i < game.Cards.Count; i++)
                             {
                                 var card = game.Cards[i];
                                 var symbol = "";
                                 if (i == spy)
                                 {
-  
+
                                     symbol = cards.symbols["Spy"][card];
-                                }else
+                                }
+                                else
                                 {
                                     symbol = cards.symbols[ourLocal][card];
                                 }
                                 strbuilder.Append("Card ").Append(card).Append(". ").Append(symbol).Append(". ");
- 
+
                             }
                             log.LogInformation("For loop exit");
                             if (session.Attributes == null)
@@ -199,7 +207,7 @@ namespace AlexaSpyfall
                             session.Attributes["playerAsked"] = -1;
                             await gameClient.UpsertDocumentAsync(collectURI, game);
                             var message = strbuilder.ToString();
-                            response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message));
+                            response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message), session);
                         }
                         catch (Exception e)
                         {
@@ -208,32 +216,154 @@ namespace AlexaSpyfall
                         }
                         break;
                     }
-                    /*            case IntentNames.StartQuestions:
-                                    {
-                                        Random r = new Random();
-                                        var collectLocalURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "locations");
-                                        var collectURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
-                                        Game game = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
-                                        LocationIndex locIn = locationClient.CreateDocumentQuery<LocationIndex>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals("index")).AsEnumerable().FirstOrDefault();
-                                        Location location = locationClient.CreateDocumentQuery<Location>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(game.Location)).AsEnumerable().FirstOrDefault();
-                                        if ((int)session.Attributes["questions"] == 0)
-                                        {
-                                            var playername = game.Players.First().Key;
-                                            var question = location.questions.Keys.ElementAt(r.Next(location.questions.Count));
-                                            game.QuestionsAsked.Add(question);
-                                            session.Attributes["questions"] = 1;
-                                            session.Attributes["askedQuestion"] = 1;
-                                            session.Attributes["playerAsked"] = 0;
-                                            session.Attributes["expectedAnswer"] = location.questions[question];
-                                            await gameClient.UpsertDocumentAsync(collectURI, game);
-                                        }
-                                        break;
-                                    }*/
+                case IntentNames.StartQuestions:
+                    {
+                        try
+                        {
+
+                            Random r = new Random();
+                            var collectLocalURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "locations");
+                            var collectURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
+                            Game game = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
+                            Location location = locationClient.CreateDocumentQuery<Location>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(game.Location)).AsEnumerable().FirstOrDefault();
+                            if ((long)session.Attributes["questions"] == 0)
+                            {
+                                var playername = game.Players.First().Key;
+                                var question = location.questions.Keys.ElementAt(r.Next(location.questions.Count));
+                                game.QuestionsAsked.Add(question);
+                                session.Attributes["questions"] = 1;
+                                session.Attributes["playerAsked"] = playername;
+                                session.Attributes["playerNumAsked"] = 0;
+                                session.Attributes["expectedAnswer"] = location.questions[question];
+                                await gameClient.UpsertDocumentAsync(collectURI, game);
+                                var message = playername + " " + question;
+                                response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message), session);
+
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            log.LogError(e.ToString());
+                            throw e;
+                        }
+                        break;
+                    }
+                case IntentNames.Yes:
+                    {
+                        try
+                        {
+
+                            var collectLocalURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "locations");
+                            var collectURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
+                            Game game = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
+                            Location location = locationClient.CreateDocumentQuery<Location>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(game.Location)).AsEnumerable().FirstOrDefault();
+                            if ((long)session.Attributes["questions"] != 0)
+                            {
+                                var player = session.Attributes["playerAsked"] as string;
+                                var difference = Math.Abs((long)session.Attributes["expectedAnswer"] - 1);
+                                if (difference == 0)
+                                {
+                                    game.Players[player] = Math.Max(game.Players[player] - .2, 0);
+                                }
+                                else if (difference == 1)
+                                {
+                                    game.Players[player] = Math.Min(game.Players[player] + .3, 1);
+                                }
+                                else if (difference == 2)
+                                {
+                                    game.Players[player] = Math.Min(game.Players[player] + .5, 1);
+                                }
+                            }
+                            Random r = new Random();
+                            var question = "";
+                            do
+                            {
+                                question = location.questions.Keys.ElementAt(r.Next(location.questions.Count));
+                            } while (game.QuestionsAsked.Contains(question));
+                            game.QuestionsAsked.Add(question);
+
+                            session.Attributes["questions"] = (long)session.Attributes["questions"] + 1;
+                            long playerNum = (long)session.Attributes["playerNumAsked"];
+                            if (++playerNum > game.Players.Count - 1)
+                            {
+                                playerNum = 0;
+                            }
+                            string playername = game.Players.Keys.ElementAt((int)playerNum);
+                            session.Attributes["playerNumAsked"] = playerNum;
+                            session.Attributes["playerAsked"] = playername;
+                            session.Attributes["expectedAnswer"] = location.questions[question];
+                            await gameClient.UpsertDocumentAsync(collectURI, game);
+                            var message = "Hmmm Ok." + playername + ", " + question;
+                            response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message), session);
+
+                        }
+                        catch (Exception e)
+                        {
+                            log.LogError(e.ToString());
+                            throw e;
+                        }
+                        break;
+                    }
+                case IntentNames.No:
+                    {
+                        try
+                        {
+
+                            var collectLocalURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "locations");
+                            var collectURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
+                            Game game = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
+                            Location location = locationClient.CreateDocumentQuery<Location>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(game.Location)).AsEnumerable().FirstOrDefault();
+                            if ((long)session.Attributes["questions"] != 0)
+                            {
+                                var player = session.Attributes["playerAsked"] as string;
+                                var difference = Math.Abs((long)session.Attributes["expectedAnswer"] + 1);
+                                if (difference == 0)
+                                {
+                                    game.Players[player] = Math.Max(game.Players[player] - .2, 0);
+                                }
+                                else if (difference == 1)
+                                {
+                                    game.Players[player] = Math.Min(game.Players[player] + .3, 1);
+                                }
+                                else if (difference == 2)
+                                {
+                                    game.Players[player] = Math.Min(game.Players[player] + .5, 1);
+                                }
+                            }
+                            Random r = new Random();
+                            var question = "";
+                            do
+                            {
+                                question = location.questions.Keys.ElementAt(r.Next(location.questions.Count));
+                            } while (game.QuestionsAsked.Contains(question));
+                            game.QuestionsAsked.Add(question);
+
+                            session.Attributes["questions"] = (long)session.Attributes["questions"] + 1;
+                            long playerNum = (long)session.Attributes["playerNumAsked"];
+                            if (++playerNum > game.Players.Count - 1)
+                            {
+                                playerNum = 0;
+                            }
+                            string playername = game.Players.Keys.ElementAt((int)playerNum);
+                            session.Attributes["playerNumAsked"] = playerNum;
+                            session.Attributes["playerAsked"] = playername;
+                            session.Attributes["expectedAnswer"] = location.questions[question];
+                            await gameClient.UpsertDocumentAsync(collectURI, game);
+                            var message = "Hmmm Ok. " + playername + ", " + question;
+                            response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message), session);
+
+                        }
+                        catch (Exception e)
+                        {
+                            log.LogError(e.ToString());
+                            throw e;
+                        }
+                        break;
+                    }
             }
-
             return (response != null, response);
-        }
 
+        }
         private static DictionaryLocaleSpeechStore SetupLanguageResources()
         {
             // Creates the locale speech store for each supported languages.
@@ -248,8 +378,8 @@ namespace AlexaSpyfall
                 [LanguageKeys.Help] = "Help...",
                 [LanguageKeys.Stop] = "Bye bye!",
                 [LanguageKeys.Error] = "I'm sorry, there was an unexpected error. Please, try again later.",
-                [LanguageKeys.StartGame]= "Lets play the game! Join everyone into the game and say lets play the game!",
-                [LanguageKeys.AddPlayer]= "New player added. Add another?"
+                [LanguageKeys.StartGame] = "Lets play the game! Join everyone into the game and say lets play the game!",
+                [LanguageKeys.AddPlayer] = "New player added. Add another?"
             });
 
             return store;

@@ -18,6 +18,8 @@ namespace AlexaSpyfall
         public const string AddPlayer = "AddPlayer";
         public const string PlayGame = "PlayGame";
         public const string StartQuestions = "StartQuestions";
+        public const string Yes = "AMAZON.YesIntent";
+        public const string No = "AMAZON.NoIntent";
 
     }
 }

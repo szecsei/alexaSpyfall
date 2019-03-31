@@ -10,6 +10,7 @@ namespace AlexaSpyfall
         public string Location { get; set; }
         public Dictionary<string,double> Players { get; set; }
         public List<string> QuestionsAsked { get; set; }
+        public List<int> Cards { get; set; }
     }
 
 }

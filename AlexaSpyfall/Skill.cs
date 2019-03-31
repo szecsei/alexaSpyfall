@@ -17,13 +17,13 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using AlexaSpyfall.Extensions;
+using AlexaSpyfall.Models;
+using System.Text;
 
 namespace AlexaSpyfall
 {
     public static class Skill
     {
-        private const string EndpointUrl = "https://spyfallalexa.documents.azure.com:443/";
-        private const string PrimaryKey = "5sFrV8zWqlhymRjhQ7xoZxAoiSvu375kbjpXmbunD1uM4Hi3Uxco444KYUiiXGrGT8SRstG9DHWFQf0R58S4Tg==";
         [FunctionName("AlexaSpyfall")]
         public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequest req,
         [CosmosDB(databaseName: "spyfalldb", collectionName: "locations", ConnectionStringSetting = "CosmosDBConnection")] DocumentClient locationClient,
@@ -128,24 +128,84 @@ namespace AlexaSpyfall
                 case IntentNames.StartGame:
                     {
                         var message = await locale.Get(LanguageKeys.StartGame, null);
-
                         await gameClient.CreateDocumentAsync(UriFactory.CreateDocumentCollectionUri("spyfalldb", "games"), new Game { id = session.SessionId, Players = new Dictionary<string, double>(),
-                        QuestionsAsked = new List<string>()});
+                            QuestionsAsked = new List<string>(), Location = "", Cards = new List<int>() });
                         response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message));
                         break;
                     }
                 case IntentNames.AddPlayer:
                     {
                         var collectURI =  UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
-                        log.LogInformation("Starting Grab From DB");
-                        //                       Game query = gameClient.CreateDocumentQuery<Game>(collectURI)
-                        //                            .Where(p => p.id == session.SessionId).First();
-                        Game query = await gameClient.ReadDocumentAsync<Game>(UriFactory.CreateDocumentUri("spyfalldb", "games", session.SessionId));
-                        log.LogInformation(query.id);
-                        query.Players.Add(request.Intent.Slots["player"].Value, 0.0);
-                        await gameClient.UpsertDocumentAsync(collectURI, query);
-                        var message = await locale.Get(LanguageKeys.AddPlayer, null);
+                        int generated = 0;
+                        try
+                        {
+                            Game next = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault() ;
+                            next.Players.Add(request.Intent.Slots["player"].Value, 0.0);
+                            Random rnd = new Random();
+                            do
+                            {
+                                generated = rnd.Next(29)+1;
+                            } while (next.Cards.Contains(generated));
+                            next.Cards.Add(generated);
+                            await gameClient.UpsertDocumentAsync(collectURI, next);
+                        } catch(Exception e)
+                        {
+                            log.LogError(e.ToString());
+                            throw e;
+                        }
+                        log.LogInformation("Something very distinct");
+                 
+                        var message = "I have assigned you card number "+generated;
                         response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message));
+                        break;
+                    }
+                case IntentNames.PlayGame:
+                    {
+                        Random r = new Random();
+                        var collectLocalURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "locations");
+                        var collectURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
+                        try
+                        {
+                            LocationIndex locIn = locationClient.CreateDocumentQuery<LocationIndex>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals("index")).AsEnumerable().FirstOrDefault();
+                            Cards cards = locationClient.CreateDocumentQuery<Cards>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals("cards")).AsEnumerable().FirstOrDefault();
+                            Game game = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
+                            string ourLocal = locIn.locations[r.Next(locIn.locations.Count)];
+                            game.Location = ourLocal;
+                            int spy = r.Next(game.Cards.Count);
+                            StringBuilder strbuilder = new StringBuilder("For every player, I will read out your card number and the symbol you should look for: ");
+                            for(int i =0; i< game.Cards.Count; i++)
+                            {
+                                var card = game.Cards[i];
+                                var symbol = "";
+                                if (i == spy)
+                                {
+                                    symbol = cards.symbols["Spy"][card];
+                                }else
+                                {
+                                    symbol = cards.symbols[ourLocal][card];
+                                }
+                                strbuilder.Append("Card ").Append(card).Append(" ").Append(symbol).Append(" ");
+                            }
+                            session.Attributes["questions"] = 0;
+                            session.Attributes["askedQuestion"] = 0;
+                            session.Attributes["playerAsked"] = -1;
+                            var message = strbuilder.ToString();
+                            response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message));
+                        }
+                        catch (Exception e)
+                        {
+                            log.LogError(e.ToString());
+                            throw e;
+                        }
+                        break;
+                    }
+                case IntentNames.StartQuestions:
+                    {
+                        var collectLocalURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "locations");
+                        var collectURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
+                        Game game = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
+                        LocationIndex locIn = locationClient.CreateDocumentQuery<LocationIndex>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals("index")).AsEnumerable().FirstOrDefault();
+
                         break;
                     }
             }

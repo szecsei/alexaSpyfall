@@ -18,5 +18,6 @@ namespace AlexaSpyfall
         public const string Error = nameof(Error);
 
         public const string StartGame = nameof(StartGame);
+        public const string AddPlayer = nameof(AddPlayer);
     }
 }

@@ -13,6 +13,7 @@ using Microsoft.Azure.Documents.Client;
 using Microsoft.Azure.Documents.Linq;
 using Newtonsoft.Json;
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using AlexaSpyfall.Extensions;
@@ -21,8 +22,13 @@ namespace AlexaSpyfall
 {
     public static class Skill
     {
+        private const string EndpointUrl = "https://spyfallalexa.documents.azure.com:443/";
+        private const string PrimaryKey = "5sFrV8zWqlhymRjhQ7xoZxAoiSvu375kbjpXmbunD1uM4Hi3Uxco444KYUiiXGrGT8SRstG9DHWFQf0R58S4Tg==";
         [FunctionName("AlexaSpyfall")]
-        public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequest req, ILogger log)
+        public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequest req,
+        [CosmosDB(databaseName: "spyfalldb", collectionName: "locations", ConnectionStringSetting = "CosmosDBConnection")] DocumentClient locationClient,
+        [CosmosDB(databaseName: "spyfalldb", collectionName: "games", ConnectionStringSetting = "CosmosDBConnection")] DocumentClient gameClient,
+        ILogger log)
         {
             var json = await req.ReadAsStringAsync();
             var skillRequest = JsonConvert.DeserializeObject<SkillRequest>(json);
@@ -33,7 +39,7 @@ namespace AlexaSpyfall
             {
                 return new BadRequestResult();
             }
-
+            Session session = skillRequest.Session;
             // Setup language resources.
             var store = SetupLanguageResources();
             var locale = skillRequest.CreateLocale(store);
@@ -56,7 +62,7 @@ namespace AlexaSpyfall
                 else if (request is IntentRequest intentRequest)
                 {
                     // Checks whether to handle system messages defined by Amazon.
-                    var systemIntentResponse = await HandleSystemIntentsAsync(intentRequest, locale);
+                    var systemIntentResponse = await HandleSystemIntentsAsync(intentRequest, locale,locationClient,gameClient,session,log);
                     if (systemIntentResponse.IsHandled)
                     {
                         response = systemIntentResponse.Response;
@@ -88,7 +94,12 @@ namespace AlexaSpyfall
             return new OkObjectResult(response);
         }
 
-        private static async Task<(bool IsHandled, SkillResponse Response)> HandleSystemIntentsAsync(IntentRequest request, ILocaleSpeech locale)
+        private static async Task<(bool IsHandled, SkillResponse Response)> HandleSystemIntentsAsync(IntentRequest request, 
+            ILocaleSpeech locale, 
+            DocumentClient locationClient,
+            DocumentClient gameClient,
+            Session session,
+            ILogger log)
         {
             SkillResponse response = null;
 
@@ -118,6 +129,23 @@ namespace AlexaSpyfall
                     {
                         var message = await locale.Get(LanguageKeys.StartGame, null);
 
+                        await gameClient.CreateDocumentAsync(UriFactory.CreateDocumentCollectionUri("spyfalldb", "games"), new Game { id = session.SessionId, Players = new Dictionary<string, double>(),
+                        QuestionsAsked = new List<string>()});
+                        response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message));
+                        break;
+                    }
+                case IntentNames.AddPlayer:
+                    {
+                        var collectURI =  UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
+                        log.LogInformation("Starting Grab From DB");
+                        //                       Game query = gameClient.CreateDocumentQuery<Game>(collectURI)
+                        //                            .Where(p => p.id == session.SessionId).First();
+                        Game query = await gameClient.ReadDocumentAsync<Game>(UriFactory.CreateDocumentUri("spyfalldb", "games", session.SessionId));
+                        log.LogInformation(query.id);
+                        query.Players.Add(request.Intent.Slots["player"].Value, 0.0);
+                        await gameClient.UpsertDocumentAsync(collectURI, query);
+                        var message = await locale.Get(LanguageKeys.AddPlayer, null);
+                        response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message));
                         break;
                     }
             }
@@ -139,7 +167,8 @@ namespace AlexaSpyfall
                 [LanguageKeys.Help] = "Help...",
                 [LanguageKeys.Stop] = "Bye bye!",
                 [LanguageKeys.Error] = "I'm sorry, there was an unexpected error. Please, try again later.",
-                [LanguageKeys.StartGame]= "Lets play the game! Join everyone into the game and say lets play the game!"
+                [LanguageKeys.StartGame]= "Lets play the game! Join everyone into the game and say lets play the game!",
+                [LanguageKeys.AddPlayer]= "New player added. Add another?"
             });
 
             return store;

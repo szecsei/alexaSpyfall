@@ -15,5 +15,7 @@ namespace AlexaSpyfall
         public const string NavigateHomeIntent = "AMAZON.NavigateHomeIntent";
         public const string Fallback = "AMAZON.FallbackIntent";
         public const string StartGame = "StartGame";
+        public const string AddPlayer = "AddPlayer";
+
     }
 }

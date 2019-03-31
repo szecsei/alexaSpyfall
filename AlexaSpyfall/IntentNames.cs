@@ -20,6 +20,8 @@ namespace AlexaSpyfall
         public const string StartQuestions = "StartQuestions";
         public const string Yes = "AMAZON.YesIntent";
         public const string No = "AMAZON.NoIntent";
+        public const string Maybe = "Maybe";
+        public const string Reveal = "Reveal";
 
     }
 }

@@ -274,6 +274,8 @@ namespace AlexaSpyfall
                                     game.Players[player] = Math.Min(game.Players[player] + .5, 1);
                                 }
                             }
+
+                            var message = "";
                             Random r = new Random();
                             var question = "";
                             do
@@ -281,8 +283,16 @@ namespace AlexaSpyfall
                                 question = location.questions.Keys.ElementAt(r.Next(location.questions.Count));
                             } while (game.QuestionsAsked.Contains(question));
                             game.QuestionsAsked.Add(question);
+                            var questions = (long)session.Attributes["questions"] + 1;
+                            if (questions > Math.Min(game.Players.Count * 3, 12))
+                            {
+                                message = "Hmmm Ok. I am ready to make my guess.";
+                                session.Attributes["guess"] = game.Players.Aggregate((a, b) => a.Value > b.Value ? a : b).Key;
+                                response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message), session);
+                                break;
+                            }
+                            session.Attributes["questions"] = questions;
 
-                            session.Attributes["questions"] = (long)session.Attributes["questions"] + 1;
                             long playerNum = (long)session.Attributes["playerNumAsked"];
                             if (++playerNum > game.Players.Count - 1)
                             {
@@ -293,7 +303,7 @@ namespace AlexaSpyfall
                             session.Attributes["playerAsked"] = playername;
                             session.Attributes["expectedAnswer"] = location.questions[question];
                             await gameClient.UpsertDocumentAsync(collectURI, game);
-                            var message = "Hmmm Ok." + playername + ", " + question;
+                            message = "Hmmm Ok. " + playername + ", " + question;
                             response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message), session);
 
                         }
@@ -330,6 +340,8 @@ namespace AlexaSpyfall
                                     game.Players[player] = Math.Min(game.Players[player] + .5, 1);
                                 }
                             }
+
+                            var message = "";
                             Random r = new Random();
                             var question = "";
                             do
@@ -337,8 +349,16 @@ namespace AlexaSpyfall
                                 question = location.questions.Keys.ElementAt(r.Next(location.questions.Count));
                             } while (game.QuestionsAsked.Contains(question));
                             game.QuestionsAsked.Add(question);
-
-                            session.Attributes["questions"] = (long)session.Attributes["questions"] + 1;
+                            var questions = (long)session.Attributes["questions"] + 1;
+                            if( questions > Math.Min(game.Players.Count * 3,12))
+                            {
+                                message = "Hmmm Ok. I am ready to make my guess.";
+                                session.Attributes["guess"] = game.Players.Aggregate((a, b) => a.Value > b.Value ? a : b).Key;
+                                response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message), session);
+                                break;
+                            }
+                            session.Attributes["questions"] = questions;
+                            
                             long playerNum = (long)session.Attributes["playerNumAsked"];
                             if (++playerNum > game.Players.Count - 1)
                             {
@@ -349,7 +369,64 @@ namespace AlexaSpyfall
                             session.Attributes["playerAsked"] = playername;
                             session.Attributes["expectedAnswer"] = location.questions[question];
                             await gameClient.UpsertDocumentAsync(collectURI, game);
-                            var message = "Hmmm Ok. " + playername + ", " + question;
+                            message = "Hmmm Ok. " + playername + ", " + question;
+                            response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message), session);
+                            
+                        }
+                        catch (Exception e)
+                        {
+                            log.LogError(e.ToString());
+                            throw e;
+                        }
+                        break;
+                    }
+                case IntentNames.Maybe:
+                    {
+                        try
+                        {
+
+                            var collectLocalURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "locations");
+                            var collectURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
+                            Game game = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
+                            Location location = locationClient.CreateDocumentQuery<Location>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(game.Location)).AsEnumerable().FirstOrDefault();
+                            if ((long)session.Attributes["questions"] != 0)
+                            {
+                                var player = session.Attributes["playerAsked"] as string;
+                                var difference = Math.Abs((long)session.Attributes["expectedAnswer"] + 1);
+                                 if (difference == 1)
+                                {
+                                    game.Players[player] = Math.Min(game.Players[player] + .4, 1);
+                                }
+                            }
+                            var message = "";
+                            Random r = new Random();
+                            var question = "";
+                            do
+                            {
+                                question = location.questions.Keys.ElementAt(r.Next(location.questions.Count));
+                            } while (game.QuestionsAsked.Contains(question));
+                            game.QuestionsAsked.Add(question);
+                            var questions = (long)session.Attributes["questions"] + 1;
+                            if (questions > Math.Min(game.Players.Count * 3, 12))
+                            {
+                                message = "Hmmm Ok. I am ready to make my guess.";
+                                session.Attributes["guess"] = game.Players.Aggregate((a, b) => a.Value > b.Value ? a : b).Key;
+                                response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message), session);
+                                break;
+                            }
+                            session.Attributes["questions"] = questions;
+
+                            long playerNum = (long)session.Attributes["playerNumAsked"];
+                            if (++playerNum > game.Players.Count - 1)
+                            {
+                                playerNum = 0;
+                            }
+                            string playername = game.Players.Keys.ElementAt((int)playerNum);
+                            session.Attributes["playerNumAsked"] = playerNum;
+                            session.Attributes["playerAsked"] = playername;
+                            session.Attributes["expectedAnswer"] = location.questions[question];
+                            await gameClient.UpsertDocumentAsync(collectURI, game);
+                            message = "Hmmm Ok. " + playername + ", " + question;
                             response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message), session);
 
                         }
@@ -358,6 +435,12 @@ namespace AlexaSpyfall
                             log.LogError(e.ToString());
                             throw e;
                         }
+                        break;
+                    }
+                case IntentNames.Reveal:
+                    {
+                        string message = "I think the spy is " + session.Attributes["guess"] + ". Was I right? Thanks for playing! Goodbye.";
+                        response = ResponseBuilder.Tell(message, session);
                         break;
                     }
             }

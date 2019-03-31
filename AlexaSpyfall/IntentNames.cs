@@ -17,6 +17,7 @@ namespace AlexaSpyfall
         public const string StartGame = "StartGame";
         public const string AddPlayer = "AddPlayer";
         public const string PlayGame = "PlayGame";
+        public const string StartQuestions = "StartQuestions";
 
     }
 }

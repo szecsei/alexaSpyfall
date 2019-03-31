@@ -169,9 +169,11 @@ namespace AlexaSpyfall
                             LocationIndex locIn = locationClient.CreateDocumentQuery<LocationIndex>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals("index")).AsEnumerable().FirstOrDefault();
                             Cards cards = locationClient.CreateDocumentQuery<Cards>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals("cards")).AsEnumerable().FirstOrDefault();
                             Game game = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
+                            log.LogInformation("ourLocal");
                             string ourLocal = locIn.locations[r.Next(locIn.locations.Count)];
                             game.Location = ourLocal;
                             int spy = r.Next(game.Cards.Count);
+                            log.LogInformation("spy " + spy);
                             StringBuilder strbuilder = new StringBuilder("For every player, I will read out your card number and the symbol you should look for: ");
                             for(int i =0; i< game.Cards.Count; i++)
                             {
@@ -179,16 +181,23 @@ namespace AlexaSpyfall
                                 var symbol = "";
                                 if (i == spy)
                                 {
+  
                                     symbol = cards.symbols["Spy"][card];
                                 }else
                                 {
                                     symbol = cards.symbols[ourLocal][card];
                                 }
-                                strbuilder.Append("Card ").Append(card).Append(" ").Append(symbol).Append(" ");
+                                strbuilder.Append("Card ").Append(card).Append(". ").Append(symbol).Append(". ");
+ 
                             }
+                            log.LogInformation("For loop exit");
+                            if (session.Attributes == null)
+                                session.Attributes = new Dictionary<string, object>();
                             session.Attributes["questions"] = 0;
                             session.Attributes["askedQuestion"] = 0;
+                            session.Attributes["expectedAnswer"] = 0;
                             session.Attributes["playerAsked"] = -1;
+                            await gameClient.UpsertDocumentAsync(collectURI, game);
                             var message = strbuilder.ToString();
                             response = ResponseBuilder.Ask(message, RepromptBuilder.Create(message));
                         }
@@ -199,15 +208,27 @@ namespace AlexaSpyfall
                         }
                         break;
                     }
-                case IntentNames.StartQuestions:
-                    {
-                        var collectLocalURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "locations");
-                        var collectURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
-                        Game game = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
-                        LocationIndex locIn = locationClient.CreateDocumentQuery<LocationIndex>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals("index")).AsEnumerable().FirstOrDefault();
-
-                        break;
-                    }
+                    /*            case IntentNames.StartQuestions:
+                                    {
+                                        Random r = new Random();
+                                        var collectLocalURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "locations");
+                                        var collectURI = UriFactory.CreateDocumentCollectionUri("spyfalldb", "games");
+                                        Game game = gameClient.CreateDocumentQuery<Game>(collectURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(session.SessionId)).AsEnumerable().FirstOrDefault();
+                                        LocationIndex locIn = locationClient.CreateDocumentQuery<LocationIndex>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals("index")).AsEnumerable().FirstOrDefault();
+                                        Location location = locationClient.CreateDocumentQuery<Location>(collectLocalURI, new FeedOptions { EnableCrossPartitionQuery = true }).Where(p => p.id.Equals(game.Location)).AsEnumerable().FirstOrDefault();
+                                        if ((int)session.Attributes["questions"] == 0)
+                                        {
+                                            var playername = game.Players.First().Key;
+                                            var question = location.questions.Keys.ElementAt(r.Next(location.questions.Count));
+                                            game.QuestionsAsked.Add(question);
+                                            session.Attributes["questions"] = 1;
+                                            session.Attributes["askedQuestion"] = 1;
+                                            session.Attributes["playerAsked"] = 0;
+                                            session.Attributes["expectedAnswer"] = location.questions[question];
+                                            await gameClient.UpsertDocumentAsync(collectURI, game);
+                                        }
+                                        break;
+                                    }*/
             }
 
             return (response != null, response);

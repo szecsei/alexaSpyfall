@@ -22,8 +22,6 @@ namespace AlexaSpyfall
 {
     public static class Skill
     {
-        private const string EndpointUrl = "https://spyfallalexa.documents.azure.com:443/";
-        private const string PrimaryKey = "5sFrV8zWqlhymRjhQ7xoZxAoiSvu375kbjpXmbunD1uM4Hi3Uxco444KYUiiXGrGT8SRstG9DHWFQf0R58S4Tg==";
         [FunctionName("AlexaSpyfall")]
         public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequest req,
         [CosmosDB(databaseName: "spyfalldb", collectionName: "locations", ConnectionStringSetting = "CosmosDBConnection")] DocumentClient locationClient,
